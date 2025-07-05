@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>ORDER -タップゲーム</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP&family=Zen+Maru+Gothic&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      margin: 0; padding: 0;
+      font-family: 'Noto Sans JP', 'Zen Maru Gothic', sans-serif;
+      background: #fafafa;
+      color: #222;
+      text-align: center;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: center;
+      padding: 20px 10px 40px;
+      user-select: none;
+      position: relative; /* ここ重要：#messageのabsolute基準に */
+    }
+    h1 {
+      font-weight: 900;
+      font-size: 2.8rem;
+      margin: 0 0 6px 0;
+      letter-spacing: 0.1em;
+      color: #2a4d69;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    }
+    #subtitle {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #666;
+      margin: 0 0 18px 0;
+      line-height: 1.4;
+      max-width: 360px;
+      user-select: text;
+    }
+    #stage-label {
+      font-weight: 700;
+      font-size: 1.3rem;
+      color: #4a90e2;
+      margin-top: 10px;
+    }
+    #game-container {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-gap: 12px;
+      max-width: 400px;
+      width: 90vw;
+      margin: 0 auto 20px;
+    }
+    .cell {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      font-size: 1.25rem;
+      font-weight: 700;
+      padding: 22px 0;
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.3s ease;
+      color: #2a4d69;
+    }
+    .cell:hover:not(.clicked) {
+      transform: scale(1.08);
+      box-shadow: 0 6px 14px rgba(0,0,0,0.12);
+    }
+    .cell.clicked {
+      opacity: 0;
+      transform: scale(0.7);
+      pointer-events: none;
+    }
+    #start-button, #retry-button {
+      background: #4a90e2;
+      border: none;
+      color: white;
+      font-weight: 700;
+      font-size: 1.1rem;
+      padding: 12px 28px;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(74,144,226,0.6);
+      transition: background-color 0.3s ease;
+      margin: 10px 5px 0 5px;
+      min-width: 140px;
+    }
+    #start-button:hover, #retry-button:hover {
+      background: #357ABD;
+      box-shadow: 0 6px 14px rgba(53,122,189,0.8);
+    }
+    #timer {
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: #2a4d69;
+      margin-top: 6px;
+    }
+    #message {
+      position: absolute;
+      top: 400px; /* 中央よりちょっと上に */
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 1.8rem;
+      font-weight: 800;
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.95);
+      border-radius: 20px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      opacity: 0;
+      transition: opacity 0.5s ease, transform 0.5s ease;
+      z-index: 10;
+    }
+    #message.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-10px);
+    }
+    @media (max-width: 520px) {
+      .cell {
+        font-size: 1rem;
+        padding: 16px 0;
+      }
+      #start-button, #retry-button {
+        min-width: 120px;
+        padding: 10px 20px;
+        font-size: 1rem;
+      }
+      h1 {
+        font-size: 2.2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>ORDER</h1>
+  <div id="subtitle">
+    Clear each stage in 30s — or game over.<br />
+    Stage 5: No time limit, just focus.<br />
+    ステージ1〜4は30秒以内にクリア。<br />
+    ステージ5は時間無制限。集中せよ。
+  </div>
+  <div id="stage-label">Stage 1</div>
+  <button id="start-button">スタート</button>
+  <button id="retry-button" style="display:none;">再挑戦</button>
+  <div id="timer">タイム：0.00秒</div>
+  <div id="game-container"></div>
+  <div id="message"></div>
+
+  <script>
+    const container = document.getElementById('game-container');
+    const timerDisplay = document.getElementById('timer');
+    const startButton = document.getElementById('start-button');
+    const retryButton = document.getElementById('retry-button');
+    const stageLabel = document.getElementById('stage-label');
+    const messageDisplay = document.getElementById('message');
+
+    let stage = 1;
+    let data = [];
+    let nextIndex = 0;
+    let startTime;
+    let timerInterval;
+    let timeoutId;
+    let isGameOver = false;
+
+    const stageTitles = [
+      "Basics(小さい順)",
+      "古の数字(小さい順)",
+      "Chaos Numbers(小さい順)",
+      "Atomic Order(原子番号の小さい順）",
+      "Leaders' Legacy（古い順にタップ）"
+    ];
+
+    const daijiNumbers = ["壱","弐","参","肆","伍","陸","漆","捌","玖","拾",
+      "拾壱","拾弐","拾参","拾肆","拾伍","拾陸","拾漆","拾捌","拾玖","弐拾"];
+
+    const elements = [
+      "H","He","Li","Be","B","C","N","O","F","Ne",
+      "Na","Mg","Al","Si","P","S","Cl","Ar","K","Ca"
+    ];
+
+    const primeMinisters = [
+      "宇野", "海部", "宮澤", "細川", "羽田", "村山", "橋本", "小渕", "森", "小泉",
+      "安倍１", "福田", "麻生", "鳩山", "菅", "野田", "安倍２", "菅義偉", "岸田", "石破"
+    ];
+
+    function shuffle(array) {
+      for(let i = array.length -1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i+1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    function updateStageLabel() {
+      stageLabel.textContent = `Stage ${stage}: ${stageTitles[stage - 1]}`;
+    }
+
+    function startGame() {
+      container.innerHTML = '';
+      messageDisplay.textContent = '';
+      messageDisplay.classList.remove('show');
+      data = [];
+      nextIndex = 0;
+      isGameOver = false;
+      updateStageLabel();
+      timerDisplay.textContent = `タイム：0.00秒`;
+
+      switch(stage) {
+        case 1:
+          data = Array.from({length:20}, (_,i)=>({val: i+1, label: `${i+1}`}));
+          break;
+        case 2:
+          data = Array.from({length:20}, (_,i)=>({val: i+1, label: daijiNumbers[i]}));
+          break;
+        case 3:
+          const nums = [];
+          while(nums.length < 20) {
+            let n = Math.floor(Math.random() * 90) + 10;
+            if(!nums.includes(n)) nums.push(n);
+          }
+          data = nums.map(n => ({val: n, label: `${n}`}));
+          break;
+        case 4:
+          data = elements.map((el,i)=>({val:i+1,label:el}));
+          break;
+        case 5:
+          data = primeMinisters.map((name,i)=>({val:i+1,label:name}));
+          break;
+      }
+
+      shuffle(data);
+      container.style.gridTemplateColumns = 'repeat(5, 1fr)';
+      data.forEach(item => {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.textContent = item.label;
+        cell.addEventListener('click', () => handleClick(item.val, cell));
+        container.appendChild(cell);
+      });
+
+      startTime = Date.now();
+      timerInterval = setInterval(updateTimer, 50);
+
+      if(stage < 5){
+        timeoutId = setTimeout(() => {
+          if(!isGameOver) endGame(false);
+        }, 30000);
+      }
+    }
+
+    function handleClick(val, cell) {
+      if(isGameOver) return;
+      const sorted = [...data].sort((a,b) => a.val - b.val);
+      if(val === sorted[nextIndex].val) {
+        cell.classList.add('clicked');
+        nextIndex++;
+        if(nextIndex === data.length) {
+          endGame(true);
+        }
+      }
+    }
+
+    function endGame(success) {
+      isGameOver = true;
+      clearInterval(timerInterval);
+      clearTimeout(timeoutId);
+
+      if(success){
+        const elapsed = ((Date.now() - startTime)/1000).toFixed(2);
+        if(stage === 5){
+          messageDisplay.style.color = '#2a7a2a';
+          messageDisplay.textContent = '🎉 クリアおめでとう！ 🎉';
+          messageDisplay.classList.add('show');
+          startButton.style.display = 'inline-block';
+          startButton.textContent = 'リスタート';
+          retryButton.style.display = 'none';
+          stage = 1;
+          timerDisplay.textContent = `タイム：${elapsed}秒`;
+          return;
+        }
+        messageDisplay.style.color = '#2a4d69';
+        messageDisplay.textContent = `クリア！`;
+        messageDisplay.classList.add('show');
+        startButton.style.display = 'inline-block';
+        startButton.textContent = '次のステージへ';
+        retryButton.style.display = 'none';
+        timerDisplay.textContent = `タイム：${elapsed}秒`;
+        stage++;
+      } else {
+        messageDisplay.style.color = '#d94f4f';
+        messageDisplay.textContent = 'ゲームオーバー！時間切れです';
+        messageDisplay.classList.add('show');
+        retryButton.style.display = 'inline-block';
+        startButton.style.display = 'none';
+        timerDisplay.textContent = 'タイムアップ！';
+      }
+    }
+
+    function updateTimer() {
+      const now = Date.now();
+      const elapsed = ((now - startTime) / 1000).toFixed(2);
+      timerDisplay.textContent = `タイム：${elapsed}秒`;
+    }
+
+    startButton.addEventListener('click', () => {
+      startButton.style.display = 'none';
+      retryButton.style.display = 'none';
+      startGame();
+    });
+
+    retryButton.addEventListener('click', () => {
+      retryButton.style.display = 'none';
+      messageDisplay.textContent = '';
+      messageDisplay.classList.remove('show');
+      startGame();
+    });
+  </script>
+</body>
+</html>
